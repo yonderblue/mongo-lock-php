@@ -256,7 +256,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
                 $dataCollection->update(['_id' => 2], ['key' => $keyTwo], ['upsert' => true]);
                 $dataCollection->update(['_id' => 3], ['key' => $keyThree], ['upsert' => true]);
 
-                $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]));
+                $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [['key' => $keyOne], ['key' => $keyTwo], ['key' => $keyThree]]) {
                     $dataCollection->update(['_id' => 'fail'], [], ['upsert' => true]);
                 }
@@ -294,7 +294,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             while (true) {
                 $readerId = Locker::readLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
 
-                $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]));
+                $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [['key' => 1], ['key' => 2], ['key' => 3]]) {
                     $dataCollection->update(['_id' => 'fail'], [], ['upsert' => true]);
                 }
@@ -347,7 +347,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             while (true) {
                 $readerId = Locker::readLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
 
-                $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]));
+                $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [['key' => 1], ['key' => 2], ['key' => 3]] &&
                     $docs !== [['key' => 4], ['key' => 5], ['key' => 6]]) {
                     $dataCollection->update(['_id' => 'fail'], [], ['upsert' => true]);
