@@ -1,7 +1,7 @@
 {
-    "name": "gaillard/gridfs-update",
-    "description": "Library to make safe concurrent mongo gridfs in-place updates",
-    "keywords": ["mongo", "gridfs"],
+    "name": "gaillard/mongo-lock",
+    "description": "Distributed multi-reader lock using MongoDB",
+    "keywords": ["mongo", "lock", "distributed"],
     "license": "MIT",
     "require": {
         "php": ">=5.4.0",
