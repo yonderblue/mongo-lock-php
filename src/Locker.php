@@ -86,7 +86,7 @@ final class Locker
      */
     public static function readUnlock(\MongoCollection $collection, $id, \MongoId $readerId)
     {
-        $collection->update(['_id' => $id], ['$pull' => ['readers' => ['id' => $readerId]]], ['multiple' => false]);
+        $collection->update(['_id' => $id], ['$pull' => ['readers' => ['id' => $readerId]]]);
     }
 
     /**
