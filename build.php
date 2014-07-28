@@ -18,7 +18,7 @@ if ($returnStatus !== 0) {
     exit(1);
 }
 
-if (!strpos(file_get_contents('coverageText'), 'Lines:  100.00%')) {
+if (!strpos(file_get_contents('coverageText'), 'Lines: 100.00%')) {
     echo "Coverage NOT 100%\n";
     exit(1);
 }
