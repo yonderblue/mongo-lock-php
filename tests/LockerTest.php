@@ -3,7 +3,7 @@ namespace Gaillard\Mongo;
 
 final class LockerTest extends \PHPUnit_Framework_TestCase
 {
-    const TEST_DB_NAME = 'mongoUtilTests';
+    const TEST_DB_NAME = 'lockerTests';
 
     public function setUp()
     {
