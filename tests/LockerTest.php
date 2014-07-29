@@ -31,7 +31,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             'writePending' => false,
             'readers' => [],
         ];
-        $this->assertEquals($expected, $collection->findOne());
+        $actual = $collection->findOne();
+        ksort($actual);
+        $this->assertEquals($expected, $actual);
     }
 
     /**
@@ -122,7 +124,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             'readers' => [['id' => $readerId, 'staleTs' => $staleTimestamp]],
             'writeStaleTs' => null,
         ];
-        $this->assertEquals($expected, $collection->findOne());
+        $actual = $collection->findOne();
+        ksort($actual);
+        $this->assertEquals($expected, $actual);
     }
 
     /**
@@ -208,12 +212,14 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
         $this->assertSame(1, $collection->count());
         $expected = [
             '_id' => 'theId',
-            'writePending' => false,
-            'writing' => false,
             'readers' => [],
+            'writePending' => false,
             'writeStaleTs' => null,
+            'writing' => false,
         ];
-        $this->assertSame($expected, $collection->findOne());
+        $actual = $collection->findOne();
+        ksort($actual);
+        $this->assertSame($expected, $actual);
     }
 
     /**
@@ -237,7 +243,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             'readers' => [['id' => $existingReaderId, 'staleTs' => $existingStaleTimestamp]],
             'writeStaleTs' => null,
         ];
-        $this->assertEquals($expected, $collection->findOne());
+        $actual = $collection->findOne();
+        ksort($actual);
+        $this->assertEquals($expected, $actual);
     }
 
     /**
