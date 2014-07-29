@@ -261,13 +261,13 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             for ($i = 0; $i < 500; ++$i) {
                 Locker::writeLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
 
-                $dataCollection->update(['_id' => 1], ['key' => $keyOne], ['upsert' => true]);
-                $dataCollection->update(['_id' => 2], ['key' => $keyTwo], ['upsert' => true]);
-                $dataCollection->update(['_id' => 3], ['key' => $keyThree], ['upsert' => true]);
+                $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => $keyOne], ['upsert' => true]);
+                $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => $keyTwo], ['upsert' => true]);
+                $dataCollection->update(['_id' => 3], ['_id' => 3, 'key' => $keyThree], ['upsert' => true]);
 
                 $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [['key' => $keyOne], ['key' => $keyTwo], ['key' => $keyThree]]) {
-                    $dataCollection->update(['_id' => 'fail'], [], ['upsert' => true]);
+                    $dataCollection->update(['_id' => 'fail'], ['_id' => 'fail'], ['upsert' => true]);
                 }
 
                 Locker::writeUnlock($locksCollection, 'theId');
@@ -305,7 +305,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
 
                 $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [] && $docs !== [['key' => 1], ['key' => 2], ['key' => 3]]) {
-                    $dataCollection->update(['_id' => 'fail'], [], ['upsert' => true]);
+                    $dataCollection->update(['_id' => 'fail'], ['_id' => 'fail'], ['upsert' => true]);
                 }
 
                 Locker::readUnlock($locksCollection, 'theId', $readerId);
@@ -320,9 +320,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             for ($i = 0; $i < 1000; ++$i) {
                 Locker::writeLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
 
-                $dataCollection->update(['_id' => 1], ['key' => 1], ['upsert' => true]);
-                $dataCollection->update(['_id' => 2], ['key' => 2], ['upsert' => true]);
-                $dataCollection->update(['_id' => 3], ['key' => 3], ['upsert' => true]);
+                $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => 1], ['upsert' => true]);
+                $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => 2], ['upsert' => true]);
+                $dataCollection->update(['_id' => 3], ['_id' => 3, 'key' => 3], ['upsert' => true]);
 
                 Locker::writeUnlock($locksCollection, 'theId');
             }
@@ -360,7 +360,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
                 if ($docs !== [] &&
                     $docs !== [['key' => 1], ['key' => 2], ['key' => 3]] &&
                     $docs !== [['key' => 4], ['key' => 5], ['key' => 6]]) {
-                    $dataCollection->update(['_id' => 'fail'], [], ['upsert' => true]);
+                    $dataCollection->update(['_id' => 'fail'], ['_id' => 'fail'], ['upsert' => true]);
                 }
 
                 Locker::readUnlock($locksCollection, 'theId', $readerId);
@@ -375,9 +375,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             for ($i = 0; $i < 200; ++$i) {
                 Locker::writeLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
 
-                $dataCollection->update(['_id' => 1], ['key' => $keyOne], ['upsert' => true]);
-                $dataCollection->update(['_id' => 2], ['key' => $keyTwo], ['upsert' => true]);
-                $dataCollection->update(['_id' => 3], ['key' => $keyThree], ['upsert' => true]);
+                $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => $keyOne], ['upsert' => true]);
+                $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => $keyTwo], ['upsert' => true]);
+                $dataCollection->update(['_id' => 3], ['_id' => 3, 'key' => $keyThree], ['upsert' => true]);
 
                 Locker::writeUnlock($locksCollection, 'theId');
             }
