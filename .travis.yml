@@ -3,12 +3,19 @@ php:
   - 5.6
   - 5.5
   - 5.4
-services: mongodb
 env:
-  - MONGO_VERSION=1.3.7
-  - MONGO_VERSION=1.4.5
-  - MONGO_VERSION=1.5.4
+  - EXT_VERSION=1.3.7 DB_PACKAGE=mongodb-10gen
+  - EXT_VERSION=1.3.7 DB_PACKAGE=mongodb-org
+  - EXT_VERSION=1.4.5 DB_PACKAGE=mongodb-10gen
+  - EXT_VERSION=1.4.5 DB_PACKAGE=mongodb-org
+  - EXT_VERSION=1.5.4 DB_PACKAGE=mongodb-10gen
+  - EXT_VERSION=1.5.4 DB_PACKAGE=mongodb-org
+before_install:
+  - "sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 7F0CEB10"
+  - "echo 'deb http://downloads-distro.mongodb.org/repo/ubuntu-upstart dist 10gen' | sudo tee /etc/apt/sources.list.d/mongodb.list"
+  - "sudo apt-get update"
+  - "sudo apt-get install ${DB_PACKAGE}"
 before_script:
   - composer self-update
-  - yes '' | pecl install -f mongo-${MONGO_VERSION}
+  - yes '' | pecl install -f mongo-${EXT_VERSION}
 script: ./build.php
