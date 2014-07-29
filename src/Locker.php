@@ -119,7 +119,13 @@ final class Locker
 
         while (time() < $timeoutTimestamp) {
             $query = ['_id' => $id, 'writing' => false, 'readers' => ['$size' => 0]];
-            $update = ['writing' => true, 'writePending' => false, 'writeStaleTs' => $staleTimestamp, 'readers' => []];
+            $update = [
+                '_id' => $id,
+                'writing' => true,
+                'writePending' => false,
+                'writeStaleTs' => $staleTimestamp,
+                'readers' => [],
+            ];
             try {
                 if ($collection->update($query, $update, ['upsert' => true])['n'] === 1) {
                     return;
