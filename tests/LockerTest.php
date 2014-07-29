@@ -209,7 +209,8 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
         $expected = [
             '_id' => 'theId',
             'writePending' => false,
-            'writing' => false, 'readers' => [],
+            'writing' => false,
+            'readers' => [],
             'writeStaleTs' => null,
         ];
         $this->assertSame($expected, $collection->findOne());
