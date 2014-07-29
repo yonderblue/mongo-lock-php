@@ -209,17 +209,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
         $readerId = Locker::readLock($collection, 'theId', new \MongoDate(time() + 1000));
         Locker::readUnlock($collection, 'theId', $readerId);
 
-        $this->assertSame(1, $collection->count());
-        $expected = [
-            '_id' => 'theId',
-            'readers' => [],
-            'writePending' => false,
-            'writeStaleTs' => null,
-            'writing' => false,
-        ];
-        $actual = $collection->findOne();
-        ksort($actual);
-        $this->assertSame($expected, $actual);
+        $this->assertSame(0, $collection->count());
     }
 
     /**
