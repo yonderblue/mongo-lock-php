@@ -70,18 +70,10 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockTimeout()
     {
-        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
-        $this->locker->writeLock('theId', new \MongoDate(time() + 1000), time() + 1);
-    }
+        $locker = new Locker($this->collection, 100000, 1);
 
-    /**
-     * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage $timeoutTimestamp must be an int
-     */
-    public function writeLockTimeoutNotInt()
-    {
-        $this->locker->writeLock('theId', new \MongoDate(), true);
+        $locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $locker->writeLock('theId', new \MongoDate(time() + 1000));
     }
 
     /**
@@ -123,18 +115,10 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readLockTimeout()
     {
-        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
-        $this->locker->readLock('theId', new \MongoDate(time() + 1000), time() + 1);
-    }
+        $locker = new Locker($this->collection, 100000, 1);
 
-    /**
-     * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage $timeoutTimestamp must be an int
-     */
-    public function readLockTimeoutNotInt()
-    {
-        $this->locker->readLock('theId', new \MongoDate(), true);
+        $locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $locker->readLock('theId', new \MongoDate(time() + 1000));
     }
 
     /**
@@ -362,5 +346,25 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
     public function negativePollDuration()
     {
         new Locker($this->collection, -1);
+    }
+
+    /**
+     * @test
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage $timeoutDuration must be an int >= 0
+     */
+    public function nonIntTimeoutDuration()
+    {
+        new Locker($this->collection, 0, true);
+    }
+
+    /**
+     * @test
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage $timeoutDuration must be an int >= 0
+     */
+    public function negativeTimeoutDuration()
+    {
+        new Locker($this->collection, 0, -1);
     }
 }

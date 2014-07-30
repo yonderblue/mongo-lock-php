@@ -18,6 +18,13 @@ final class Locker
     private $pollDuration;
 
     /**
+     * How long to wait for a lock before throwing an exception.
+     *
+     * @var int
+     */
+    private $timeoutDuration;
+
+    /**
      * Lock docs look like:
      * [
      *     '_id' => string, the id
@@ -38,15 +45,21 @@ final class Locker
      *
      * @param \MongoCollection $collection the lock collection
      * @param int $pollDuration duration in microseconds to wait inbetween lock attempts
+     * @param int $timeoutDuration duration in seconds to wait for a lock before throwing an exception
      */
-    public function __construct(\MongoCollection $collection, $pollDuration = 100000)
+    public function __construct(\MongoCollection $collection, $pollDuration = 100000, $timeoutDuration = PHP_INT_MAX)
     {
         if (!is_int($pollDuration) || $pollDuration < 0) {
             throw new \InvalidArgumentException('$pollDuration must be an int >= 0');
         }
 
+        if (!is_int($timeoutDuration) || $timeoutDuration < 0) {
+            throw new \InvalidArgumentException('$timeoutDuration must be an int >= 0');
+        }
+
         $this->collection = $collection;
         $this->pollDuration = $pollDuration;
+        $this->timeoutDuration = $timeoutDuration;
     }
 
     /**
@@ -56,17 +69,14 @@ final class Locker
      *     Any type suitable for a mongo _id
      * @param \MongoDate $staleTimestamp time the read is considered stale and can be cleared.
      *     (to possibly write lock if no more readers)
-     * @param int $timeoutTimestamp a unix timestamp to stop waiting and throw an exception
      *
      * @throws \Exception
      *
      * @return \MongoId a reader id to be given to readUnlock()
      */
-    public function readLock($id, \MongoDate $staleTimestamp, $timeoutTimestamp = PHP_INT_MAX)
+    public function readLock($id, \MongoDate $staleTimestamp)
     {
-        if (!is_int($timeoutTimestamp)) {
-            throw new \InvalidArgumentException('$timeoutTimestamp must be an int');
-        }
+        $timeoutTimestamp = (int)min(time() + $this->timeoutDuration, PHP_INT_MAX);
 
         while (time() < $timeoutTimestamp) {
             $readerId = new \MongoId();
@@ -119,11 +129,9 @@ final class Locker
      *
      * @throws \Exception
      */
-    public function writeLock($id, \MongoDate $staleTimestamp, $timeoutTimestamp = PHP_INT_MAX)
+    public function writeLock($id, \MongoDate $staleTimestamp)
     {
-        if (!is_int($timeoutTimestamp)) {
-            throw new \InvalidArgumentException('$timeoutTimestamp must be an int');
-        }
+        $timeoutTimestamp = (int)min(time() + $this->timeoutDuration, PHP_INT_MAX);
 
         while (time() < $timeoutTimestamp) {
             $query = ['_id' => $id, 'writing' => false, 'readers' => ['$size' => 0]];
