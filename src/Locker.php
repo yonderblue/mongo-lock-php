@@ -67,16 +67,21 @@ final class Locker
      *
      * @param mixed $id an id for the lock that used with the other *Lock()/*Unlock() methods.
      *     Any type suitable for a mongo _id
-     * @param \MongoDate $staleTimestamp time the read is considered stale and can be cleared.
+     * @param int $staleDuration duration in seconds before the read is considered stale and can be cleared.
      *     (to possibly write lock if no more readers)
      *
      * @throws \Exception
      *
      * @return \MongoId a reader id to be given to readUnlock()
      */
-    public function readLock($id, \MongoDate $staleTimestamp)
+    public function readLock($id, $staleDuration)
     {
+        if (!is_int($staleDuration) || $staleDuration < 0) {
+            throw new \InvalidArgumentException('$staleDuration must be an int >= 0');
+        }
+
         $timeoutTimestamp = (int)min(time() + $this->timeoutDuration, PHP_INT_MAX);
+        $staleTimestamp = new \MongoDate((int)min(time() + $staleDuration, PHP_INT_MAX));
 
         while (time() < $timeoutTimestamp) {
             $readerId = new \MongoId();
@@ -123,15 +128,20 @@ final class Locker
      *
      * @param mixed $id an id for the lock that used with the other *Lock()/*Unlock() methods.
      *     Any type suitable for a mongo _id
-     * @param \MongoDate $staleTimestamp time the write is considered stale and can be cleared.
+     * @param int $staleDuration duration in seconds before the write is considered stale and can be cleared.
      *     (to possibly read/write lock)
      * @param int $timeoutTimestamp a unix timestamp to stop waiting and throw an exception
      *
      * @throws \Exception
      */
-    public function writeLock($id, \MongoDate $staleTimestamp)
+    public function writeLock($id, $staleDuration)
     {
+        if (!is_int($staleDuration) || $staleDuration < 0) {
+            throw new \InvalidArgumentException('$staleDuration must be an int >= 0');
+        }
+
         $timeoutTimestamp = (int)min(time() + $this->timeoutDuration, PHP_INT_MAX);
+        $staleTimestamp = new \MongoDate((int)min(time() + $staleDuration, PHP_INT_MAX));
 
         while (time() < $timeoutTimestamp) {
             $query = ['_id' => $id, 'writing' => false, 'readers' => ['$size' => 0]];

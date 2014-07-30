@@ -26,21 +26,21 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockEmptyCollection()
     {
-        $staleTimestamp = new \MongoDate(time() + 1000);
-
-        $this->locker->writeLock('theId', $staleTimestamp);
+        $this->locker->writeLock('theId', 1000);
 
         $this->assertSame(1, $this->collection->count());
-        $expected = [
-            '_id' => 'theId',
-            'writing' => true,
-            'writeStaleTs' => $staleTimestamp,
-            'writePending' => false,
-            'readers' => [],
-        ];
+
         $actual = $this->collection->findOne();
+
+        $actualWriteStaleTs = $actual['writeStaleTs']->sec;
+        unset($actual['writeStaleTs']);
+
+        $expected = ['_id' => 'theId', 'readers' => [], 'writePending' => false, 'writing' => true];
         ksort($actual);
-        $this->assertEquals($expected, $actual);
+        $this->assertSame($expected, $actual);
+
+        $this->assertGreaterThanOrEqual(time() + 1000, $actualWriteStaleTs);
+        $this->assertLessThan(time() + 1010, $actualWriteStaleTs);
     }
 
     /**
@@ -48,9 +48,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockClearStuckWrite()
     {
-        $this->locker->writeLock('theId', new \MongoDate());
+        $this->locker->writeLock('theId', 0);
 
-        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->writeLock('theId', 1000);
     }
 
     /**
@@ -58,9 +58,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockClearStuckRead()
     {
-        $this->locker->readLock('theId', new \MongoDate());
+        $this->locker->readLock('theId', 0);
 
-        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->writeLock('theId', 1000);
     }
 
     /**
@@ -72,8 +72,28 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
     {
         $locker = new Locker($this->collection, 100000, 1);
 
-        $locker->writeLock('theId', new \MongoDate(time() + 1000));
-        $locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $locker->writeLock('theId', 1000);
+        $locker->writeLock('theId', 1000);
+    }
+
+    /**
+     * @test
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage $staleDuration must be an int >= 0
+     */
+    public function writeLockNonIntStaleDuration()
+    {
+        (new Locker($this->collection))->writeLock('theId', true);
+    }
+
+    /**
+     * @test
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage $staleDuration must be an int >= 0
+     */
+    public function writeLockNegativeStaleDuration()
+    {
+        (new Locker($this->collection))->writeLock('theId', -1);
     }
 
     /**
@@ -81,21 +101,27 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readLockEmptyCollection()
     {
-        $staleTimestamp = new \MongoDate(time() + 1000);
-
-        $readerId = $this->locker->readLock('theId', $staleTimestamp);
+        $readerId = $this->locker->readLock('theId', 1000);
 
         $this->assertSame(1, $this->collection->count());
-        $expected = [
-            '_id' => 'theId',
-            'writing' => false,
-            'writePending' => false,
-            'readers' => [['id' => $readerId, 'staleTs' => $staleTimestamp]],
-            'writeStaleTs' => null,
-        ];
+
         $actual = $this->collection->findOne();
+
+        $actualReaders = $actual['readers'];
+        unset($actual['readers']);
+
+        $expected = ['_id' => 'theId', 'writePending' => false, 'writeStaleTs' => null, 'writing' => false];
+
         ksort($actual);
-        $this->assertEquals($expected, $actual);
+        $this->assertSame($expected, $actual);
+
+        $this->assertCount(1, $actualReaders);
+        $this->assertCount(2, $actualReaders[0]);
+
+        $this->assertInstanceOf('\MongoId', $actualReaders[0]['id']);
+
+        $this->assertGreaterThanOrEqual(time() + 1000, $actualReaders[0]['staleTs']->sec);
+        $this->assertLessThan(time() + 1010, $actualReaders[0]['staleTs']->sec);
     }
 
     /**
@@ -103,9 +129,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readLockClearStuck()
     {
-        $this->locker->writeLock('theId', new \MongoDate());
+        $this->locker->writeLock('theId', 0);
 
-        $this->locker->readLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->readLock('theId', 1000);
     }
 
     /**
@@ -117,8 +143,28 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
     {
         $locker = new Locker($this->collection, 100000, 1);
 
-        $locker->writeLock('theId', new \MongoDate(time() + 1000));
-        $locker->readLock('theId', new \MongoDate(time() + 1000));
+        $locker->writeLock('theId', 1000);
+        $locker->readLock('theId', 1000);
+    }
+
+    /**
+     * @test
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage $staleDuration must be an int >= 0
+     */
+    public function readLockNonIntStaleDuration()
+    {
+        (new Locker($this->collection))->readLock('theId', true);
+    }
+
+    /**
+     * @test
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage $staleDuration must be an int >= 0
+     */
+    public function readLockNegativeStaleDuration()
+    {
+        (new Locker($this->collection))->readLock('theId', -1);
     }
 
     /**
@@ -126,7 +172,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeUnlock()
     {
-        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->writeLock('theId', 1000);
         $this->locker->writeUnlock('theId');
 
         $this->assertSame(0, $this->collection->count());
@@ -137,7 +183,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readUnlockEmptyCollection()
     {
-        $readerId = $this->locker->readLock('theId', new \MongoDate(time() + 1000));
+        $readerId = $this->locker->readLock('theId', 1000);
         $this->locker->readUnlock('theId', $readerId);
 
         $this->assertSame(0, $this->collection->count());
@@ -148,23 +194,30 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readUnlockExistingReader()
     {
-        $existingStaleTimestamp = new \MongoDate(time() + 1000);
-        $existingReaderId = $this->locker->readLock('theId', $existingStaleTimestamp);
+        $existingReaderId = $this->locker->readLock('theId', 1000);
 
-        $readerId = $this->locker->readLock('theId', new \MongoDate(time() + 1000));
+        $readerId = $this->locker->readLock('theId', 1000);
         $this->locker->readUnlock('theId', $readerId);
 
         $this->assertSame(1, $this->collection->count());
-        $expected = [
-            '_id' => 'theId',
-            'writing' => false,
-            'writePending' => false,
-            'readers' => [['id' => $existingReaderId, 'staleTs' => $existingStaleTimestamp]],
-            'writeStaleTs' => null,
-        ];
+
         $actual = $this->collection->findOne();
+
+        $actualReaders = $actual['readers'];
+        unset($actual['readers']);
+
+        $expected = ['_id' => 'theId', 'writePending' => false, 'writeStaleTs' => null, 'writing' => false];
+
         ksort($actual);
-        $this->assertEquals($expected, $actual);
+        $this->assertSame($expected, $actual);
+
+        $this->assertCount(1, $actualReaders);
+        $this->assertCount(2, $actualReaders[0]);
+
+        $this->assertInstanceOf('\MongoId', $actualReaders[0]['id']);
+
+        $this->assertGreaterThanOrEqual(time() + 1000, $actualReaders[0]['staleTs']->sec);
+        $this->assertLessThan(time() + 1010, $actualReaders[0]['staleTs']->sec);
     }
 
     /**
@@ -178,7 +231,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             $locker = new Locker($db->selectCollection('locks'), 0);
 
             for ($i = 0; $i < 500; ++$i) {
-                $locker->writeLock('theId', new \MongoDate(time() + 1000));
+                $locker->writeLock('theId', 1000);
 
                 $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => $keyOne], ['upsert' => true]);
                 $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => $keyTwo], ['upsert' => true]);
@@ -219,7 +272,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             $locker = new Locker($db->selectCollection('locks'), 0);
 
             while (true) {
-                $readerId = $locker->readLock('theId', new \MongoDate(time() + 1000));
+                $readerId = $locker->readLock('theId', 1000);
 
                 $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [] && $docs !== [['key' => 1], ['key' => 2], ['key' => 3]]) {
@@ -236,7 +289,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             $locker = new Locker($db->selectCollection('locks'), 0);
 
             for ($i = 0; $i < 1000; ++$i) {
-                $locker->writeLock('theId', new \MongoDate(time() + 1000));
+                $locker->writeLock('theId', 1000);
 
                 $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => 1], ['upsert' => true]);
                 $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => 2], ['upsert' => true]);
@@ -271,7 +324,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             $locker = new Locker($db->selectCollection('locks'), 0);
 
             while (true) {
-                $readerId = $locker->readLock('theId', new \MongoDate(time() + 1000));
+                $readerId = $locker->readLock('theId', 1000);
 
                 $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [] &&
@@ -290,7 +343,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             $locker = new Locker($db->selectCollection('locks'), 0);
 
             for ($i = 0; $i < 200; ++$i) {
-                $locker->writeLock('theId', new \MongoDate(time() + 1000));
+                $locker->writeLock('theId', 1000);
 
                 $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => $keyOne], ['upsert' => true]);
                 $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => $keyTwo], ['upsert' => true]);
