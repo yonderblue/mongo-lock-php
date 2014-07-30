@@ -24,27 +24,27 @@ To add the library as a local, per-project dependency use [Composer](http://getc
 $writer = function($value) {
     $db = (new \MongoClient())->selectDB('locksExample');
     $data = $db->selectCollection('data');
-    $locks = $db->selectCollection('locks');
+    $locker = new Locker($db->selectCollection('locks'), 0);
 
     while (true) {
-        Locker::writeLock($locks, 'theId', new \MongoDate(time() + 1000), 0);
+        $locker->writeLock('theId', 1000);
 
         $data->update(['_id' => 1], ['_id' => 1, 'key' => $value], ['upsert' => true]);
         $data->update(['_id' => 2], ['_id' => 2, 'key' => $value], ['upsert' => true]);
         $data->update(['_id' => 3], ['_id' => 3, 'key' => $value], ['upsert' => true]);
         $data->update(['_id' => 4], ['_id' => 4, 'key' => $value], ['upsert' => true]);
 
-        Locker::writeUnlock($locks, 'theId');
+        $locker->writeUnlock('theId');
     }
 };
 
 $reader = function() {
     $db = (new \MongoClient())->selectDB('locksExample');
     $data = $db->selectCollection('data');
-    $locks = $db->selectCollection('locks');
+    $locker = new Locker($db->selectCollection('locks'), 100000);
 
     while (true) {
-        $readerId = Locker::readLock($locks, 'theId', new \MongoDate(time() + 1000), 100000);
+        $readerId = $locker->readLock('theId', 1000);
 
         foreach ($data->find()->sort(['_id' => 1]) as $doc) {
             echo "{$doc['key']} ";
@@ -52,7 +52,7 @@ $reader = function() {
 
         echo "\n";
 
-        Locker::readUnlock($locks, 'theId', $readerId);
+        $locker->readUnlock('theId', $readerId);
 
         usleep(100000);
     }
