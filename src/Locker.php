@@ -4,6 +4,27 @@ namespace Gaillard\Mongo;
 final class Locker
 {
     /**
+     * The lock collection.
+     *
+     * @var \MongoCollection
+     */
+    private $collection;
+
+    /**
+     * The duration in microseconds to wait inbetween lock attempts.
+     *
+     * @var int
+     */
+    private $pollDuration;
+
+    /**
+     * How long to wait for a lock before throwing an exception.
+     *
+     * @var int
+     */
+    private $timeoutDuration;
+
+    /**
      * Lock docs look like:
      * [
      *     '_id' => string, the id
@@ -20,34 +41,42 @@ final class Locker
      */
 
     /**
-     * Get a read lock.
+     * Initialize the locker.
      *
      * @param \MongoCollection $collection the lock collection
+     * @param int $pollDuration duration in microseconds to wait inbetween lock attempts
+     * @param int $timeoutDuration duration in seconds to wait for a lock before throwing an exception
+     */
+    public function __construct(\MongoCollection $collection, $pollDuration = 100000, $timeoutDuration = PHP_INT_MAX)
+    {
+        if (!is_int($pollDuration) || $pollDuration < 0) {
+            throw new \InvalidArgumentException('$pollDuration must be an int >= 0');
+        }
+
+        if (!is_int($timeoutDuration) || $timeoutDuration < 0) {
+            throw new \InvalidArgumentException('$timeoutDuration must be an int >= 0');
+        }
+
+        $this->collection = $collection;
+        $this->pollDuration = $pollDuration;
+        $this->timeoutDuration = $timeoutDuration;
+    }
+
+    /**
+     * Get a read lock.
+     *
      * @param mixed $id an id for the lock that used with the other *Lock()/*Unlock() methods.
      *     Any type suitable for a mongo _id
      * @param \MongoDate $staleTimestamp time the read is considered stale and can be cleared.
      *     (to possibly write lock if no more readers)
-     * @param int $pollDuration duration in microseconds to wait inbetween lock attempts
-     * @param int $timeoutTimestamp a unix timestamp to stop waiting and throw an exception
      *
      * @throws \Exception
      *
      * @return \MongoId a reader id to be given to readUnlock()
      */
-    public static function readLock(
-        \MongoCollection $collection,
-        $id,
-        \MongoDate $staleTimestamp,
-        $pollDuration = 100000,
-        $timeoutTimestamp = PHP_INT_MAX
-    ) {
-        if (!is_int($pollDuration) || $pollDuration < 0) {
-            throw new \InvalidArgumentException('$pollDuration must be an int >= 0');
-        }
-
-        if (!is_int($timeoutTimestamp)) {
-            throw new \InvalidArgumentException('$timeoutTimestamp must be an int');
-        }
+    public function readLock($id, \MongoDate $staleTimestamp)
+    {
+        $timeoutTimestamp = (int)min(time() + $this->timeoutDuration, PHP_INT_MAX);
 
         while (time() < $timeoutTimestamp) {
             $readerId = new \MongoId();
@@ -57,7 +86,7 @@ final class Locker
                 '$set' => ['writeStaleTs' => null],
             ];
             try {
-                if ($collection->update($query, $update, ['upsert' => true])['n'] === 1) {
+                if ($this->collection->update($query, $update, ['upsert' => true])['n'] === 1) {
                     return $readerId;
                 }
             } catch (\MongoException $e) {
@@ -66,11 +95,11 @@ final class Locker
                 }
             }
 
-            if (self::clearStuckWrite($collection, $id)) {
+            if ($this->clearStuckWrite($id)) {
                 continue;
             }
 
-            usleep($pollDuration);
+            usleep($this->pollDuration);
         }
 
         throw new \Exception('timed out waiting for lock');
@@ -79,44 +108,30 @@ final class Locker
     /**
      * Release a read lock.
      *
-     * @param \MongoCollection $collection the lock collection
      * @param mixed $id an id for the lock that used with the other *Lock()/*Unlock() methods.
      *     Any type suitable for a mongo _id
      * @param \MongoId $readerId reader id returned from readLock()
      */
-    public static function readUnlock(\MongoCollection $collection, $id, \MongoId $readerId)
+    public function readUnlock($id, \MongoId $readerId)
     {
-        $collection->update(['_id' => $id], ['$pull' => ['readers' => ['id' => $readerId]]]);
-        $collection->remove(['_id' => $id, 'writing' => false, 'readers' => ['$size' => 0]]);
+        $this->collection->update(['_id' => $id], ['$pull' => ['readers' => ['id' => $readerId]]]);
+        $this->collection->remove(['_id' => $id, 'writing' => false, 'readers' => ['$size' => 0]]);
     }
 
     /**
      * Get a write lock.
      *
-     * @param \MongoCollection $collection the lock collection
      * @param mixed $id an id for the lock that used with the other *Lock()/*Unlock() methods.
      *     Any type suitable for a mongo _id
      * @param \MongoDate $staleTimestamp time the write is considered stale and can be cleared.
      *     (to possibly read/write lock)
-     * @param int $pollDuration duration in microseconds to wait inbetween lock attempts
      * @param int $timeoutTimestamp a unix timestamp to stop waiting and throw an exception
      *
      * @throws \Exception
      */
-    public static function writeLock(
-        \MongoCollection $collection,
-        $id,
-        \MongoDate $staleTimestamp,
-        $pollDuration = 100000,
-        $timeoutTimestamp = PHP_INT_MAX
-    ) {
-        if (!is_int($pollDuration) || $pollDuration < 0) {
-            throw new \InvalidArgumentException('$pollDuration must be an int >= 0');
-        }
-
-        if (!is_int($timeoutTimestamp)) {
-            throw new \InvalidArgumentException('$timeoutTimestamp must be an int');
-        }
+    public function writeLock($id, \MongoDate $staleTimestamp)
+    {
+        $timeoutTimestamp = (int)min(time() + $this->timeoutDuration, PHP_INT_MAX);
 
         while (time() < $timeoutTimestamp) {
             $query = ['_id' => $id, 'writing' => false, 'readers' => ['$size' => 0]];
@@ -128,7 +143,7 @@ final class Locker
                 'readers' => [],
             ];
             try {
-                if ($collection->update($query, $update, ['upsert' => true])['n'] === 1) {
+                if ($this->collection->update($query, $update, ['upsert' => true])['n'] === 1) {
                     return;
                 }
             } catch (\MongoException $e) {
@@ -137,13 +152,13 @@ final class Locker
                 }
             }
 
-            if (self::clearStuckWrite($collection, $id) || self::clearStuckRead($collection, $id)) {
+            if ($this->clearStuckWrite($id) || $this->clearStuckRead($id)) {
                 continue;
             }
 
-            $collection->update(['_id' => $id], ['$set' => ['writePending' => true]]);
+            $this->collection->update(['_id' => $id], ['$set' => ['writePending' => true]]);
 
-            usleep($pollDuration);
+            usleep($this->pollDuration);
         }
 
         throw new \Exception('timed out waiting for lock');
@@ -152,27 +167,26 @@ final class Locker
     /**
      * Release a write lock.
      *
-     * @param \MongoCollection $collection the lock collection
      * @param mixed $id an id for the lock that used with the other *Lock()/*Unlock() methods.
      *     Any type suitable for a mongo _id
      */
-    public static function writeUnlock(\MongoCollection $collection, $id)
+    public function writeUnlock($id)
     {
-        $collection->remove(['_id' => $id]);
+        $this->collection->remove(['_id' => $id]);
     }
 
-    private static function clearStuckWrite(\MongoCollection $collection, $id)
+    private function clearStuckWrite($id)
     {
-        return $collection->remove(
+        return $this->collection->remove(
             ['_id' => $id, 'writing' => true, 'writeStaleTs' => ['$lte' => new \MongoDate()]]
         )['n'] === 1;
     }
 
-    private static function clearStuckRead(\MongoCollection $collection, $id)
+    private function clearStuckRead($id)
     {
         $now = new \MongoDate();
         $query = ['_id' => $id, 'writing' => false, 'readers.staleTs' => ['$lte' => $now]];
         $update = ['$pull' => ['readers' => ['staleTs' => ['$lte' => $now]]]];
-        return $collection->update($query, $update)['n'] === 1;
+        return $this->collection->update($query, $update)['n'] === 1;
     }
 }
