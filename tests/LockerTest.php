@@ -39,8 +39,8 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
         ksort($actual);
         $this->assertSame($expected, $actual);
 
-        $this->assertGreaterThanOrEqual(time() + 1000, $actualWriteStaleTs);
-        $this->assertLessThan(time() + 1010, $actualWriteStaleTs);
+        $this->assertLessThanOrEqual(time() + 1000, $actualWriteStaleTs);
+        $this->assertGreaterThan(time() + 990, $actualWriteStaleTs);
     }
 
     /**
@@ -120,8 +120,8 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
 
         $this->assertInstanceOf('\MongoId', $actualReaders[0]['id']);
 
-        $this->assertGreaterThanOrEqual(time() + 1000, $actualReaders[0]['staleTs']->sec);
-        $this->assertLessThan(time() + 1010, $actualReaders[0]['staleTs']->sec);
+        $this->assertLessThanOrEqual(time() + 1000, $actualReaders[0]['staleTs']->sec);
+        $this->assertGreaterThan(time() + 990, $actualReaders[0]['staleTs']->sec);
     }
 
     /**
@@ -216,8 +216,8 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
 
         $this->assertInstanceOf('\MongoId', $actualReaders[0]['id']);
 
-        $this->assertGreaterThanOrEqual(time() + 1000, $actualReaders[0]['staleTs']->sec);
-        $this->assertLessThan(time() + 1010, $actualReaders[0]['staleTs']->sec);
+        $this->assertLessThanOrEqual(time() + 1000, $actualReaders[0]['staleTs']->sec);
+        $this->assertGreaterThan(time() + 990, $actualReaders[0]['staleTs']->sec);
     }
 
     /**
