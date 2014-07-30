@@ -3,13 +3,22 @@ namespace Gaillard\Mongo;
 
 final class LockerTest extends \PHPUnit_Framework_TestCase
 {
+    private $collection;
+    private $dataCollection;
+    private $locker;
+
     const TEST_DB_NAME = 'lockerTests';
 
     public function setUp()
     {
         parent::setUp();
 
-        (new \MongoClient())->selectDB(self::TEST_DB_NAME)->drop();
+        $db = (new \MongoClient())->selectDB(self::TEST_DB_NAME);
+        $db->drop();
+
+        $this->collection = $db->selectCollection('locks');
+        $this->dataCollection = $db->selectCollection('data');
+        $this->locker = new Locker($this->collection);
     }
 
     /**
@@ -17,13 +26,11 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockEmptyCollection()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-
         $staleTimestamp = new \MongoDate(time() + 1000);
 
-        Locker::writeLock($collection, 'theId', $staleTimestamp);
+        $this->locker->writeLock('theId', $staleTimestamp);
 
-        $this->assertSame(1, $collection->count());
+        $this->assertSame(1, $this->collection->count());
         $expected = [
             '_id' => 'theId',
             'writing' => true,
@@ -31,7 +38,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             'writePending' => false,
             'readers' => [],
         ];
-        $actual = $collection->findOne();
+        $actual = $this->collection->findOne();
         ksort($actual);
         $this->assertEquals($expected, $actual);
     }
@@ -41,11 +48,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockClearStuckWrite()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
+        $this->locker->writeLock('theId', new \MongoDate());
 
-        Locker::writeLock($collection, 'theId', new \MongoDate());
-
-        Locker::writeLock($collection, 'theId', new \MongoDate(time() + 1000));
+        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
     }
 
     /**
@@ -53,33 +58,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockClearStuckRead()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
+        $this->locker->readLock('theId', new \MongoDate());
 
-        Locker::readLock($collection, 'theId', new \MongoDate());
-
-        Locker::writeLock($collection, 'theId', new \MongoDate(time() + 1000));
-    }
-
-    /**
-     * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage $pollDuration must be an int >= 0
-     */
-    public function writeLockNonIntPollDuration()
-    {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-        Locker::writeLock($collection, 'theId', new \MongoDate(), true);
-    }
-
-    /**
-     * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage $pollDuration must be an int >= 0
-     */
-    public function writeLockNegativePollDuration()
-    {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-        Locker::writeLock($collection, 'theId', new \MongoDate(), -1);
+        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
     }
 
     /**
@@ -89,9 +70,8 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockTimeout()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-        Locker::writeLock($collection, 'theId', new \MongoDate(time() + 1000));
-        Locker::writeLock($collection, 'theId', new \MongoDate(time() + 1000), 100000, time() + 1);
+        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->writeLock('theId', new \MongoDate(time() + 1000), time() + 1);
     }
 
     /**
@@ -101,8 +81,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeLockTimeoutNotInt()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-        Locker::writeLock($collection, 'theId', new \MongoDate(), 0, true);
+        $this->locker->writeLock('theId', new \MongoDate(), true);
     }
 
     /**
@@ -110,13 +89,11 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readLockEmptyCollection()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-
         $staleTimestamp = new \MongoDate(time() + 1000);
 
-        $readerId = Locker::readLock($collection, 'theId', $staleTimestamp);
+        $readerId = $this->locker->readLock('theId', $staleTimestamp);
 
-        $this->assertSame(1, $collection->count());
+        $this->assertSame(1, $this->collection->count());
         $expected = [
             '_id' => 'theId',
             'writing' => false,
@@ -124,7 +101,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             'readers' => [['id' => $readerId, 'staleTs' => $staleTimestamp]],
             'writeStaleTs' => null,
         ];
-        $actual = $collection->findOne();
+        $actual = $this->collection->findOne();
         ksort($actual);
         $this->assertEquals($expected, $actual);
     }
@@ -134,11 +111,9 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readLockClearStuck()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
+        $this->locker->writeLock('theId', new \MongoDate());
 
-        Locker::writeLock($collection, 'theId', new \MongoDate());
-
-        Locker::readLock($collection, 'theId', new \MongoDate(time() + 1000));
+        $this->locker->readLock('theId', new \MongoDate(time() + 1000));
     }
 
     /**
@@ -148,31 +123,8 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readLockTimeout()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-        Locker::writeLock($collection, 'theId', new \MongoDate(time() + 1000));
-        Locker::readLock($collection, 'theId', new \MongoDate(time() + 1000), 100000, time() + 1);
-    }
-
-    /**
-     * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage $pollDuration must be an int >= 0
-     */
-    public function readLockNonIntPollDuration()
-    {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-        Locker::readLock($collection, 'theId', new \MongoDate(), true);
-    }
-
-    /**
-     * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage $pollDuration must be an int >= 0
-     */
-    public function readLockNegativePollDuration()
-    {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-        Locker::readLock($collection, 'theId', new \MongoDate(), -1);
+        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->readLock('theId', new \MongoDate(time() + 1000), time() + 1);
     }
 
     /**
@@ -182,8 +134,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readLockTimeoutNotInt()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-        Locker::readLock($collection, 'theId', new \MongoDate(), 0, true);
+        $this->locker->readLock('theId', new \MongoDate(), true);
     }
 
     /**
@@ -191,12 +142,10 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function writeUnlock()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
+        $this->locker->writeLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->writeUnlock('theId');
 
-        Locker::writeLock($collection, 'theId', new \MongoDate(time() + 1000));
-        Locker::writeUnlock($collection, 'theId');
-
-        $this->assertSame(0, $collection->count());
+        $this->assertSame(0, $this->collection->count());
     }
 
     /**
@@ -204,12 +153,10 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readUnlockEmptyCollection()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
+        $readerId = $this->locker->readLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->readUnlock('theId', $readerId);
 
-        $readerId = Locker::readLock($collection, 'theId', new \MongoDate(time() + 1000));
-        Locker::readUnlock($collection, 'theId', $readerId);
-
-        $this->assertSame(0, $collection->count());
+        $this->assertSame(0, $this->collection->count());
     }
 
     /**
@@ -217,15 +164,13 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
      */
     public function readUnlockExistingReader()
     {
-        $collection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('locks');
-
         $existingStaleTimestamp = new \MongoDate(time() + 1000);
-        $existingReaderId = Locker::readLock($collection, 'theId', $existingStaleTimestamp);
+        $existingReaderId = $this->locker->readLock('theId', $existingStaleTimestamp);
 
-        $readerId = Locker::readLock($collection, 'theId', new \MongoDate(time() + 1000));
-        Locker::readUnlock($collection, 'theId', $readerId);
+        $readerId = $this->locker->readLock('theId', new \MongoDate(time() + 1000));
+        $this->locker->readUnlock('theId', $readerId);
 
-        $this->assertSame(1, $collection->count());
+        $this->assertSame(1, $this->collection->count());
         $expected = [
             '_id' => 'theId',
             'writing' => false,
@@ -233,7 +178,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
             'readers' => [['id' => $existingReaderId, 'staleTs' => $existingStaleTimestamp]],
             'writeStaleTs' => null,
         ];
-        $actual = $collection->findOne();
+        $actual = $this->collection->findOne();
         ksort($actual);
         $this->assertEquals($expected, $actual);
     }
@@ -246,10 +191,10 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
         $writer = function ($keyOne, $keyTwo, $keyThree) {
             $db = (new \MongoClient())->selectDB(self::TEST_DB_NAME);
             $dataCollection = $db->selectCollection('data');
-            $locksCollection = $db->selectCollection('locks');
+            $locker = new Locker($db->selectCollection('locks'), 0);
 
             for ($i = 0; $i < 500; ++$i) {
-                Locker::writeLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
+                $locker->writeLock('theId', new \MongoDate(time() + 1000));
 
                 $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => $keyOne], ['upsert' => true]);
                 $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => $keyTwo], ['upsert' => true]);
@@ -260,7 +205,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
                     $dataCollection->update(['_id' => 'fail'], ['_id' => 'fail'], ['upsert' => true]);
                 }
 
-                Locker::writeUnlock($locksCollection, 'theId');
+                $locker->writeUnlock('theId');
             }
         };
 
@@ -276,8 +221,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
 
         posix_kill($writerOnePid, SIGTERM);
 
-        $dataCollection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('data');
-        $this->assertNull($dataCollection->findOne(['_id' => 'fail']));
+        $this->assertNull($this->dataCollection->findOne(['_id' => 'fail']));
     }
 
     /**
@@ -288,33 +232,33 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
         $reader = function () {
             $db = (new \MongoClient())->selectDB(self::TEST_DB_NAME);
             $dataCollection = $db->selectCollection('data');
-            $locksCollection = $db->selectCollection('locks');
+            $locker = new Locker($db->selectCollection('locks'), 0);
 
             while (true) {
-                $readerId = Locker::readLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
+                $readerId = $locker->readLock('theId', new \MongoDate(time() + 1000));
 
                 $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [] && $docs !== [['key' => 1], ['key' => 2], ['key' => 3]]) {
                     $dataCollection->update(['_id' => 'fail'], ['_id' => 'fail'], ['upsert' => true]);
                 }
 
-                Locker::readUnlock($locksCollection, 'theId', $readerId);
+                $locker->readUnlock('theId', $readerId);
             }
         };
 
         $writer = function () {
             $db = (new \MongoClient())->selectDB(self::TEST_DB_NAME);
             $dataCollection = $db->selectCollection('data');
-            $locksCollection = $db->selectCollection('locks');
+            $locker = new Locker($db->selectCollection('locks'), 0);
 
             for ($i = 0; $i < 1000; ++$i) {
-                Locker::writeLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
+                $locker->writeLock('theId', new \MongoDate(time() + 1000));
 
                 $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => 1], ['upsert' => true]);
                 $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => 2], ['upsert' => true]);
                 $dataCollection->update(['_id' => 3], ['_id' => 3, 'key' => 3], ['upsert' => true]);
 
-                Locker::writeUnlock($locksCollection, 'theId');
+                $locker->writeUnlock('theId');
             }
         };
 
@@ -329,8 +273,7 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
 
         posix_kill($readerPid, SIGTERM);
 
-        $dataCollection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('data');
-        $this->assertNull($dataCollection->findOne(['_id' => 'fail']));
+        $this->assertNull($this->dataCollection->findOne(['_id' => 'fail']));
     }
 
     /**
@@ -341,10 +284,10 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
         $reader = function () {
             $db = (new \MongoClient())->selectDB(self::TEST_DB_NAME);
             $dataCollection = $db->selectCollection('data');
-            $locksCollection = $db->selectCollection('locks');
+            $locker = new Locker($db->selectCollection('locks'), 0);
 
             while (true) {
-                $readerId = Locker::readLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
+                $readerId = $locker->readLock('theId', new \MongoDate(time() + 1000));
 
                 $docs = iterator_to_array($dataCollection->find([], ['_id' => 0])->sort(['_id' => 1]), false);
                 if ($docs !== [] &&
@@ -353,23 +296,23 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
                     $dataCollection->update(['_id' => 'fail'], ['_id' => 'fail'], ['upsert' => true]);
                 }
 
-                Locker::readUnlock($locksCollection, 'theId', $readerId);
+                $locker->readUnlock('theId', $readerId);
             }
         };
 
         $writer = function ($keyOne, $keyTwo, $keyThree) {
             $db = (new \MongoClient())->selectDB(self::TEST_DB_NAME);
             $dataCollection = $db->selectCollection('data');
-            $locksCollection = $db->selectCollection('locks');
+            $locker = new Locker($db->selectCollection('locks'), 0);
 
             for ($i = 0; $i < 200; ++$i) {
-                Locker::writeLock($locksCollection, 'theId', new \MongoDate(time() + 1000), 0);
+                $locker->writeLock('theId', new \MongoDate(time() + 1000));
 
                 $dataCollection->update(['_id' => 1], ['_id' => 1, 'key' => $keyOne], ['upsert' => true]);
                 $dataCollection->update(['_id' => 2], ['_id' => 2, 'key' => $keyTwo], ['upsert' => true]);
                 $dataCollection->update(['_id' => 3], ['_id' => 3, 'key' => $keyThree], ['upsert' => true]);
 
-                Locker::writeUnlock($locksCollection, 'theId');
+                $locker->writeUnlock('theId');
             }
         };
 
@@ -398,7 +341,26 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
         posix_kill($readerOnePid, SIGTERM);
         posix_kill($readerTwoPid, SIGTERM);
 
-        $dataCollection = (new \MongoClient())->selectDB(self::TEST_DB_NAME)->selectCollection('data');
-        $this->assertNull($dataCollection->findOne(['_id' => 'fail']));
+        $this->assertNull($this->dataCollection->findOne(['_id' => 'fail']));
+    }
+
+    /**
+     * @test
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage $pollDuration must be an int >= 0
+     */
+    public function nonIntPollDuration()
+    {
+        new Locker($this->collection, true);
+    }
+
+    /**
+     * @test
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage $pollDuration must be an int >= 0
+     */
+    public function negativePollDuration()
+    {
+        new Locker($this->collection, -1);
     }
 }
