@@ -136,6 +136,24 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
 
     /**
      * @test
+     */
+    public function readLockClearStuckWritePending()
+    {
+        $this->locker->readLock('theId', 2);
+
+        //the attempted write lock below only sets writePending since we already have a read lock
+        $locker = new Locker($this->collection, 0, 1);
+        try {
+            $locker->writeLock('theId', 0);
+            $this->fail();
+        } catch (\Exception $e) {
+        }
+
+        $this->locker->readLock('theId', 1000);
+    }
+
+    /**
+     * @test
      * @expectedException \Exception
      * @expectedExceptionMessage timed out waiting for lock
      */
@@ -218,6 +236,19 @@ final class LockerTest extends \PHPUnit_Framework_TestCase
 
         $this->assertLessThanOrEqual(time() + 1000, $actualReaders[0]['staleTs']->sec);
         $this->assertGreaterThan(time() + 990, $actualReaders[0]['staleTs']->sec);
+    }
+
+    /**
+     * @test
+     */
+    public function readUnlockExistingReaderStale()
+    {
+        $this->locker->readLock('theId', 0);
+
+        $readerId = $this->locker->readLock('theId', 1000);
+        $this->locker->readUnlock('theId', $readerId);
+
+        $this->assertSame(0, $this->collection->count());
     }
 
     /**

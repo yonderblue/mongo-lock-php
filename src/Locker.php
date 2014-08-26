@@ -85,10 +85,20 @@ final class Locker
 
         while (time() < $timeoutTimestamp) {
             $readerId = new \MongoId();
-            $query = ['_id' => $id, 'writing' => false, 'writePending' => false];
+            $query = [
+                '_id' => $id,
+                '$or' => [
+                    //normal case where we have zero or more readers and no writers pending
+                    ['writing' => false, 'writePending' => false],
+                    //case where a pending write is stale
+                    ['writing' => false, 'writePending' => true, 'writeStaleTs' => ['$lte' => new \MongoDate()]],
+                    //case where a writer is stale
+                    ['writing' => true, 'writeStaleTs' => ['$lte' => new \MongoDate()]],
+                ],
+            ];
             $update = [
                 '$push' => ['readers' => ['id' => $readerId, 'staleTs' => $staleTimestamp]],
-                '$set' => ['writeStaleTs' => null],
+                '$set' => ['writing' => false, 'writePending' => false, 'writeStaleTs' => null],
             ];
             try {
                 if ($this->collection->update($query, $update, ['upsert' => true])['n'] === 1) {
@@ -98,10 +108,6 @@ final class Locker
                 if ($e->getCode() !== 11000) {
                     throw $e;//@codeCoverageIgnore
                 }
-            }
-
-            if ($this->clearStuckWrite($id)) {
-                continue;
             }
 
             usleep($this->pollDuration);
@@ -119,7 +125,11 @@ final class Locker
      */
     public function readUnlock($id, \MongoId $readerId)
     {
-        $this->collection->update(['_id' => $id], ['$pull' => ['readers' => ['id' => $readerId]]]);
+        $this->collection->update(
+            ['_id' => $id],
+            //pull this reader id, or any stale readers
+            ['$pull' => ['readers' => ['$or' => [['id' => $readerId], ['staleTs' => ['$lte' => new \MongoDate()]]]]]]
+        );
         $this->collection->remove(['_id' => $id, 'writing' => false, 'readers' => ['$size' => 0]]);
     }
 
@@ -144,7 +154,17 @@ final class Locker
         $staleTimestamp = new \MongoDate((int)min(time() + $staleDuration, PHP_INT_MAX));
 
         while (time() < $timeoutTimestamp) {
-            $query = ['_id' => $id, 'writing' => false, 'readers' => ['$size' => 0]];
+            $query = [
+                '_id' => $id,
+                '$or' => [
+                    //normal case when readers are done
+                    ['writing' => false, 'readers' => ['$size' => 0]],
+                    //to clean where writer is stuck
+                    ['writing' => true, 'writeStaleTs' => ['$lte' => new \MongoDate()]],
+                    //to clean where all readers are stuck
+                    ['writing' => false, 'readers.staleTs' => ['$not' => ['$gt' => new \MongoDate()]]],
+                ],
+            ];
             $update = [
                 '_id' => $id,
                 'writing' => true,
@@ -162,11 +182,10 @@ final class Locker
                 }
             }
 
-            if ($this->clearStuckWrite($id) || $this->clearStuckRead($id)) {
-                continue;
-            }
-
-            $this->collection->update(['_id' => $id], ['$set' => ['writePending' => true]]);
+            $this->collection->update(
+                ['_id' => $id],
+                ['$set' => ['writePending' => true, 'writeStaleTs' => $staleTimestamp]]
+            );
 
             usleep($this->pollDuration);
         }
@@ -183,20 +202,5 @@ final class Locker
     public function writeUnlock($id)
     {
         $this->collection->remove(['_id' => $id]);
-    }
-
-    private function clearStuckWrite($id)
-    {
-        return $this->collection->remove(
-            ['_id' => $id, 'writing' => true, 'writeStaleTs' => ['$lte' => new \MongoDate()]]
-        )['n'] === 1;
-    }
-
-    private function clearStuckRead($id)
-    {
-        $now = new \MongoDate();
-        $query = ['_id' => $id, 'writing' => false, 'readers.staleTs' => ['$lte' => $now]];
-        $update = ['$pull' => ['readers' => ['staleTs' => ['$lte' => $now]]]];
-        return $this->collection->update($query, $update)['n'] === 1;
     }
 }
